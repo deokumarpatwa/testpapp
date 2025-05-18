@@ -70,6 +70,7 @@ sap.ui.define(
               .getComponentData().startupParameters;
   
             self.workflowId = params.WFID[0];
+            self.workItemId = params.WIID[0];
   
             var oDataModel = this.getOwnerComponent().getModel();
             var d = {};
@@ -93,6 +94,7 @@ sap.ui.define(
             //   }
   
             d.Workflowid = self.workflowId;
+            d.WorkitemId = self.workItemId;
             //d.ActualAgent = self.oUserId;
             d.Action = "RESERVE";
   
@@ -117,6 +119,11 @@ sap.ui.define(
                   self.getView().byId("form_bulkappr").setVisible(true);
                   self.getView().byId("txt_tabledesc").setText(oData.Tabledesc);
 
+                  self.TableName  = oData.Tablename;
+                  self.Versioned = oData.Isversioned;// === true ? 'Y':'N';
+                  self.role = oData.Requestorrole;
+
+
                   //remarks
                   self.remarks = oData.Requestorremarks;
                   self.ReqEmailId = oData.Requestoremailid;
@@ -125,6 +132,8 @@ sap.ui.define(
                   self.approveemail = oData.Approveremail;
                   self.approverremarks = oData.Approverremarks;
                   self.approvallevel = oData.Approverlevel;
+                  self.updatezflag = oData.Updateztabonly;
+                  self.isOverwrtwithnull = oData.Isoverwritewithnull;
                   self.getView().byId("txt_reqid").setText(self.RequesterId);
                   self.getView().byId("txt_reqemail").setText(self.ReqEmailId);
                   self.getView().byId("txt_reqremarks").setText(self.remarks);
@@ -189,9 +198,9 @@ sap.ui.define(
           },
   
           putBackWorkItem: function (oEvent) {
-            var oModel = this.getOwnerComponent().getModel();
+            var oDataModel = this.getOwnerComponent().getModel();
             var oEntry = {};
-            oEntry.Workflowid = self.parentwiid;
+            oEntry.WorkitemId = self.workItemId;
             //oEntry.ACTUAL_AGENT = self.oUserId;
             oEntry.Action = "PUTBACK";
   
@@ -247,7 +256,8 @@ sap.ui.define(
             var oDataModel = self.getOwnerComponent().getModel();
             var lv_oDataURL = oDataModel.sServiceUrl;
             var wfid = self.workflowId;
-  
+            var lv_version = self.Versioned;
+
             if (lv_version === "Y") {
               var lv_ver = "G";
               if (self.futureVer === "Y") {
@@ -258,43 +268,43 @@ sap.ui.define(
   
               var entitySet_Url =
                 lv_oDataURL +
-                "/InHeaderGrpSet?$filter=(Tablename eq '" +
-                self.tableName +
-                "' and versionActive eq '" +
+                "/ExportReqDataSet?$filter=(Tablename eq '" +
+                self.TableName +
+                "' and Versionactive eq '" +
                 lv_ver +
-                "' and workflowid eq '" +
+                "' and Workflowid eq '" +
                 wfid +
                 "' and Requesterrole eq '" +
                 self.role +
-                "') &$expand=NAVOUTDATA,NAVOUTOLDDATA,NAVOUTWORKFLOWID,NAVOUTRETMESSAGES";
+                "') &$expand=NAVOUTDATA,NAVOUTOLDDATA,NAVOUTWORKFLOWREMARKS,NAVOUTRETMESSAGE";
   
-              oDataModel.read(
+              OData.read(
                 entitySet_Url,
                 function (oData) {
                   var lv_NAVOUTDATA = oData.results[0].NAVOUTDATA.results;
                   var lv_NAVOUTOLDDATA = oData.results[0].NAVOUTOLDDATA.results;
                   var lv_NAVOUTRETMESSAGES =
-                    oData.results[0].NAVOUTRETMESSAGES.results;
+                    oData.results[0].NAVOUTRETMESSAGE.results;
   
                   var oJSONModel = new JSONModel(lv_NAVOUTDATA);
-                  self.getOwnerComponent().getModel(oJSONModel, "oJSONModel");
+                  self.getOwnerComponent().setModel(oJSONModel, "oJSONModel");
   
-                  var wb = xlsx.utils.book_new();
+                  var wb = XLSX.utils.book_new();
                   wb.Props = {
-                    Title: self.tableName,
-                    Subject: self.tableName,
-                    Author: "INTAPPTICS",
-                    CreationDate: currentdate,
+                    Title: self.TableName,
+                    Subject: self.TableName,
+                    Author: "MDR",
+                    CreationDate: new Date(),
                   };
-                  wb.SeetNames.push("Requested Records Data");
+                  wb.SheetNames.push("Requested Data");
                   var ws_data = [];
                   for (var i = 0; i < lv_NAVOUTDATA.length; i++) {
                     ws_data.push(lv_NAVOUTDATA[i].Data.split("«"));
                   }
   
-                  var wsData = xlsx.utils.aoa_to_sheet(ws_data);
+                  var wsData = XLSX.utils.aoa_to_sheet(ws_data);
                   wb.Sheets["Requested Data"] = wsData;
-                  var wbout = xlsx.write(wb, {
+                  var wbout = XLSX.write(wb, {
                     bookType: "xlsx",
                     type: "binary",
                   });
@@ -303,14 +313,14 @@ sap.ui.define(
                     var buf = new ArrayBuffer(s.length);
                     var view = new Uint8Array(buf);
                     for (var i = 0; i < s.length; i++)
-                      view[i] = s.charCodeAt(i) & 0xff;
+                      view[i] = s.charCodeAt(i) & 0xFF;
                     return buf;
                   }
                   saveAs(
                     new Blob([s2ab(wbout)], {
                       type: "application/octet-stream",
                     }),
-                    self.tableName + "_RequestedRecords_" + datetime + ".xlsx"
+                    self.TableName + "_RequestedRecords_" + wfid + "_" + datetime + ".xlsx"
                   );
                 },
                 function (oError) {
@@ -334,14 +344,14 @@ sap.ui.define(
                   var oJSONModel = new JSONModel(lv_NAVOUTDATA);
                   self.getOwnerComponent().getModel(oJSONModel, "oJSONModel");
   
-                  var wb = xlsx.utils.book_new();
+                  var wb = XLSX.utils.book_new();
                   wb.Props = {
                     Title: self.tableName,
                     Subject: self.tableName,
-                    Author: "INTAPPTICS",
+                    Author: "MDR",
                     CreationDate: currentdate,
                   };
-                  wb.SeetNames.push(self.tableName);
+                  wb.SheetNames.push(self.tableName);
                   var excel_data = [];
                   for (var i = 0; i < lv_NAVOUTDATA.length; i++) {
                     if (i == 0) {
@@ -359,9 +369,9 @@ sap.ui.define(
                     ws_data.push(excel_data[i].split("«"));
                   }
   
-                  var wsData = xlsx.utils.aoa_to_sheet(ws_data);
+                  var wsData = XLSX.utils.aoa_to_sheet(ws_data);
                   wb.Sheets["Requested Data"] = wsData;
-                  var wbout = xlsx.write(wb, {
+                  var wbout = XLSX.write(wb, {
                     bookType: "xlsx",
                     type: "binary",
                   });
@@ -491,14 +501,14 @@ sap.ui.define(
             var lv_oDataURL = oDataModel.sServiceUrl;
             var wfid = workflowId;
   
-            if (lv_versioned === "Y") {
+            if (self.Versioned === "Y") {
               var lv_ver = "G";
               if (self.futureVer === "Y") {
                 lv_ver = "F";
               } else {
                 lv_ver = "G";
               }
-            } else if (lv_versioned === "N") {
+            } else if (self.Versioned === "N") {
               lv_ver = "N";
             }
   
@@ -507,91 +517,101 @@ sap.ui.define(
               actionTaken = "REJECTED";
             }
   
-            if (self.approvallevel == "1") {
+            if (self.approvallevel == "0") {
               var entitySet_Url =
                 lv_oDataURL +
-                "/ApproverHeaderSet?$filter=(wfstage eq 'LEVEL1' and Tablename eq '" +
-                self.tableName +
+                "/ApproverHeaderSet?$filter=(Wfstage eq 'LEVEL1' and Tablename eq '" +
+                self.TableName +
                 "' and Action eq '" +
                 actionTaken +
-                "' and operationType eq 'BULK' and workflowid eq '" +
+                "' and Operationtype eq 'BULK' and Workflowid eq '" +
                 wfid +
-                "' and version eq '" +
+                "' and Version eq '" +
                 lv_ver +
-                "' and preservenull eq '" +
-                self.preservenull +
-                "' and requesterrole eq '" +
+                "' and Isoverwrtwtnull eq '" +
+                self.isOverwrtwithnull +
+                "' and Requesterrole eq '" +
                 self.role +
-                "' and updateztabpnly eq '" +
+                "' and Updateztabonly eq '" +
                 self.updatezflag +
-                "')&$expand=NAVEMESSAGE,NAVETERRORMESSAGE";
+                "' and WorkItemId eq '" +
+                self.workItemId +
+                "' and Approverremarks eq '" +
+                remarks +
+                "')&$expand=NAVOUTARETMESSAGE";
             } else {
               var entitySet_Url =
                 lv_oDataURL +
                 "/ApproverHeaderSet?$filter=(Tablename eq '" +
-                self.tableName +
+                self.TableName +
                 "' and Action eq '" +
                 actionTaken +
-                "' and operationType eq 'BULK' and workflowid eq '" +
+                "' and Operationtype eq 'BULK' and Workflowid eq '" +
                 wfid +
-                "' and version eq '" +
+                "' and Version eq '" +
                 lv_ver +
-                "' and preservenull eq '" +
-                self.preservenull +
+                "' and Isoverwrtwtnull eq '" +
+                self.isOverwrtwithnull +
                 "' and requesterrole eq '" +
-                self.role +
+                self.Requesterrole +
                 "' and updateztabpnly eq '" +
                 self.updatezflag +
-                "')&$expand=NAVEMESSAGE,NAVETERRORMESSAGE";
+                "' and WorkItemId eq '" +
+                self.workItemId +
+                "' and Approverremarks eq '" +
+                remarks +
+                "')&$expand=NAVOUTARETMESSAGE";
             }
   
-            oDataModel.read(
+            OData.read(
               entitySet_Url,
               function (oData) {
-                var lv_NAVEMESSAGE = oData.results[0].NAVEMESSAGE.results;
-                var lv_NAVETERRORMESSAGE =
-                  oData.results[0].NAVETERRORMESSAGE.results;
+                //var lv_NAVEMESSAGE = oData.results[0].NAVEMESSAGE.results;
+                var lv_NAVOUTARETMESSAGE =
+                  oData.results[0].NAVOUTARETMESSAGE.results;
   
-                var oUserData = self
+               /* var oUserData = self
                   .getOwnerComponent()
                   .getModel("usermodel")
                   .getData();
-                self.apprEmailId = oUserData.email;
+                self.apprEmailId = oUserData.email;*/
   
-                var lv_errTxt = oData.results[0].NAVEMESSAGE.results[0].Messages1;
-                var lv_errType = oData.results[0].NAVEMESSAGE.results[0].Type;
+                var lv_errTxt = oData.results[0].NAVOUTARETMESSAGE.results[0].Message;
+                var lv_errType = oData.results[0].NAVOUTARETMESSAGE.results[0].Type;
   
                 if (lv_errType !== "E") {
-                  self._MessageManager.addMessages(
-                    new MessageBox({
-                      message: lv_errTxt,
-                      type: MessageType.Success,
-                      additionalText: "Workflow: " + wfid,
-                      processor: self
-                        .getOwnerComponent()
-                        .getView()
-                        .getModel("oJSONModel"),
-                    })
-                  );
+                  
+                  self.getView().byId("taskCompletedMsg").setVisible(true);
+  
+                        self.getView().byId("taskCompletedMsg").setText("Task is completed");
+                        self.getView().byId("tb_footerbulkappr").setVisible(false);
+                        self.getView().byId("form_bulkappr").setVisible(false);
+                        self.getView().byId("btn_putback").setVisible(false);
+                }
+                else if (lv_errType === "E"){
+                  MessageBox.error("Action could not be completed, " + lv_errTxt);
                 }
   
-                if (lv_NAVETERRORMESSAGE.length !== 0) {
+                /*
+                if (lv_NAVOUTARETMESSAGE.length !== 0) {
                   var lv_ErrMsg = "";
-                  for (var i = 0; i < lv_NAVETERRORMESSAGE.length; i++) {
+                  for (var i = 0; i < lv_NAVOUTARETMESSAGE.length; i++) {
                     if (lv_ErrMsg === "") {
-                      lv_ErrMsg = lv_NAVETERRORMESSAGE[i].Message1;
+                      lv_ErrMsg = lv_NAVOUTARETMESSAGE[i].Message;
                     } else {
                       lv_ErrMsg =
-                        lv_ErrMsg + " , " + lv_NAVETERRORMESSAGE[i].Message1;
+                        lv_ErrMsg + " , " + lv_NAVOUTARETMESSAGE[i].Message;
                     }
                   }
-                  MessageBox.error("Action could not be completed, " + lv_ErrMsg);
+                  MessageBox.error("Action could not be completed, " + lv_errTxt);
                 } else {
+
+                  
                   if (lv_errType !== "E") {
                     if (self.finalaction === "Abandon") {
                       actionTaken = "Abandon";
                     }
-  
+                    
                     var oDataModel = self.getOwnerComponent().getModel();
                     var oEntry = {};
                     oEntry.WorkflowId = self.workflowId;
@@ -638,7 +658,8 @@ sap.ui.define(
                   } else {
                     MessageBox.show("Action could not be completed");
                   }
-                }
+                  
+                }*/
               },
               function (oError) {
                 var lv_txt = oError.message;
